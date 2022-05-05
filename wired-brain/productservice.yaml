@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productservice-deployment
+  labels:
+    app: productservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: productservice
+  template:
+    metadata:
+      labels:
+        app: productservice
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: '/metrics'
+        prometheus.io/port: '8000'
+    spec:
+      containers:
+        - name: productservice
+          image: product-service:latest
+          imagePullPolicy: Never
+          ports:
+          - containerPort: 5000
+          env:
+          - name: MYSQL_USERNAME
+            valueFrom:
+              configMapKeyRef:
+                name: mysql-config
+                key: mysql-username
+          - name: MYSQL_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: mysql-config
+                key: mysql-host
+          - name: MYSQL_DB
+            valueFrom:
+              configMapKeyRef:
+                name: mysql-config
+                key: mysql-database
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: mysql-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: productservice-service
+  labels:
+    app: productservice
+spec:
+  type: NodePort
+  selector:
+    app: productservice
+  ports:
+    - name: web
+      protocol: TCP
+      port: 5000
+      targetPort: 5000
+      nodePort: 30100
+    - name: metrics
+      port: 8000
+      targetPort: 8000
+      nodePort: 30800
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    serviceMonitorSelector: prometheus
+  name: productservice-servicemonitor
+  namespace: default
+spec:
+  endpoints:
+  - interval: 30s
+    targetPort: 8000
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - default
+  selector:
+    matchLabels:
+      app: "productservice"
